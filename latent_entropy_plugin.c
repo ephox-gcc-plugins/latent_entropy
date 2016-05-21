@@ -245,6 +245,7 @@ static void perturb_local_entropy(basic_block bb, tree local_entropy)
 	tree addxorrol, rhs;
 	enum tree_code op;
 
+	// !!!
 	op = get_op(&rhs);
 	addxorrol = fold_build2_loc(UNKNOWN_LOCATION, op, unsigned_intDI_type_node, local_entropy, rhs);
 	assign = gimple_build_assign(local_entropy, addxorrol);
@@ -259,39 +260,40 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 	gimple assign;
 	tree addxorrol, temp;
 
-	/* 1. create temporary copy of latent_entropy */
+	/* create temporary copy of latent_entropy */
 	temp = create_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
 	add_referenced_var(temp);
 
-	/* 2. read... */
-	temp = make_ssa_name(temp, NULL);
-	assign = gimple_build_assign(temp, latent_entropy_decl);
-	SSA_NAME_DEF_STMT(temp) = assign;
-	add_referenced_var(latent_entropy_decl);
-	gsi = gsi_after_labels(bb);
-	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
-	update_stmt(assign);
+	gsi = gsi_last_bb(bb);
 
-	/*  3. ...modify... */
-	addxorrol = fold_build2_loc(UNKNOWN_LOCATION, get_op(NULL), unsigned_intDI_type_node, temp, rhs);
-	temp = make_ssa_name(SSA_NAME_VAR(temp), NULL);
-	assign = gimple_build_assign(temp, addxorrol);
-	SSA_NAME_DEF_STMT(temp) = assign;
-	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
-	update_stmt(assign);
-
-	/* 4. ...write latent_entropy */
+	/* 3. ...write latent_entropy */
 	assign = gimple_build_assign(latent_entropy_decl, temp);
-	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
+
+	/* 2. ...modify... */
+	addxorrol = fold_build2_loc(UNKNOWN_LOCATION, get_op(NULL), unsigned_intDI_type_node, temp, rhs);
+	// !!!
+	assign = gimple_build_assign(temp, addxorrol);
+	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
+
+	/* 1. read... */
+	assign = gimple_build_assign(temp, latent_entropy_decl);
+	// !!!
+	add_referenced_var(latent_entropy_decl);
+	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
+
 }
 
 static unsigned int latent_entropy_execute(void)
 {
 	basic_block bb;
-	gimple assign;
+	gimple assign, call;
 	gimple_stmt_iterator gsi;
-	tree local_entropy;
+	tree local_entropy, frame_addr, rhs;
+	enum tree_code subcode;
 
 	if (!latent_entropy_decl) {
 		varpool_node_ptr node;
@@ -310,12 +312,6 @@ static unsigned int latent_entropy_execute(void)
 			return 0;
 	}
 
-	/* 1. create local entropy variable */
-	local_entropy = create_tmp_var(unsigned_intDI_type_node, "local_entropy");
-	add_referenced_var(local_entropy);
-	mark_sym_for_renaming(local_entropy);
-
-	/* 2. initialize local entropy variable */
 	gcc_assert(single_succ_p(ENTRY_BLOCK_PTR_FOR_FN(cfun)));
 	bb = single_succ(ENTRY_BLOCK_PTR_FOR_FN(cfun));
 	if (!single_pred_p(bb)) {
@@ -325,18 +321,38 @@ static unsigned int latent_entropy_execute(void)
 	}
 	gsi = gsi_after_labels(bb);
 
-	assign = gimple_build_assign(local_entropy, build_int_cstu(unsigned_intDI_type_node, get_random_const()));
-	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
-	update_stmt(assign);
-	bb = bb->next_bb;
+	/* create local entropy variables */
+	local_entropy = create_tmp_var(unsigned_intDI_type_node, "local_entropy");
+	add_referenced_var(local_entropy);
+	mark_sym_for_renaming(local_entropy);
 
-	/* 3. instrument each BB with an operation on the local entropy variable */
+	frame_addr = create_tmp_var(ptr_type_node, "local_entropy_frame_addr");
+	add_referenced_var(frame_addr);
+	mark_sym_for_renaming(frame_addr);
+
+	/* 1. stack pointer */
+	call = gimple_build_call(builtin_decl_implicit(BUILT_IN_FRAME_ADDRESS), 1, integer_zero_node);
+	gimple_call_set_lhs(call, frame_addr);
+	gsi_insert_before(&gsi, call, GSI_NEW_STMT);
+	update_stmt(call);
+
+	assign = gimple_build_assign(local_entropy, fold_convert(unsigned_intDI_type_node, frame_addr));
+	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
+
+	subcode = get_op(&rhs);
+	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rhs);
+	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
+
+	bb = bb->next_bb;
+	/* 2. instrument each BB with an operation on the local entropy variable */
 	while (bb != EXIT_BLOCK_PTR_FOR_FN(cfun)) {
 		perturb_local_entropy(bb, local_entropy);
 		bb = bb->next_bb;
 	};
 
-	/* 4. mix local entropy into the global entropy variable */
+	/* 3. mix local entropy into the global entropy variable */
 	gcc_assert(single_pred_p(EXIT_BLOCK_PTR_FOR_FN(cfun)));
 	perturb_latent_entropy(single_pred(EXIT_BLOCK_PTR_FOR_FN(cfun)), local_entropy);
 	return 0;
