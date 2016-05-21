@@ -242,13 +242,12 @@ static void perturb_local_entropy(basic_block bb, tree local_entropy)
 {
 	gimple_stmt_iterator gsi;
 	gimple assign;
-	tree addxorrol, rhs;
-	enum tree_code op;
+	tree rhs;
+	enum tree_code subcode;
 
-	// !!!
-	op = get_op(&rhs);
-	addxorrol = fold_build2_loc(UNKNOWN_LOCATION, op, unsigned_intDI_type_node, local_entropy, rhs);
-	assign = gimple_build_assign(local_entropy, addxorrol);
+	subcode = get_op(&rhs);
+	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rhs);
+
 	gsi = gsi_after_labels(bb);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
@@ -258,7 +257,8 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 {
 	gimple_stmt_iterator gsi;
 	gimple assign;
-	tree addxorrol, temp;
+	tree temp;
+	enum tree_code subcode;
 
 	/* create temporary copy of latent_entropy */
 	temp = create_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
@@ -272,15 +272,13 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 	update_stmt(assign);
 
 	/* 2. ...modify... */
-	addxorrol = fold_build2_loc(UNKNOWN_LOCATION, get_op(NULL), unsigned_intDI_type_node, temp, rhs);
-	// !!!
-	assign = gimple_build_assign(temp, addxorrol);
+	subcode = get_op(NULL);
+	assign = gimple_build_assign_with_ops(subcode, temp, temp, rhs);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
 	/* 1. read... */
 	assign = gimple_build_assign(temp, latent_entropy_decl);
-	// !!!
 	add_referenced_var(latent_entropy_decl);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
