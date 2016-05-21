@@ -297,8 +297,7 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 static void mix_in_sp(basic_block bb, tree local_entropy)
 {
 	gimple assign, call;
-	tree frame_addr, rhs;
-	enum tree_code subcode;
+	tree frame_addr, rand_const;
 	gimple_stmt_iterator gsi = gsi_after_labels(bb);
 
 	frame_addr = create_a_tmp_var(ptr_type_node, "local_entropy_frame_addr");
@@ -312,8 +311,8 @@ static void mix_in_sp(basic_block bb, tree local_entropy)
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
-	subcode = get_op(&rhs);
-	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rhs);
+	rand_const = build_int_cstu(unsigned_intDI_type_node, get_random_const());
+	assign = gimple_build_assign_with_ops(BIT_XOR_EXPR, local_entropy, local_entropy, rand_const);
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 }
