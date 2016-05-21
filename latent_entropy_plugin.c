@@ -257,7 +257,6 @@ static void perturb_local_entropy(basic_block bb, tree local_entropy)
 
 	subcode = get_op(&rhs);
 	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rhs);
-
 	gsi = gsi_after_labels(bb);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
@@ -287,21 +286,41 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 	update_stmt(assign);
 
 	/* 1. read... */
-	assign = gimple_build_assign(temp, latent_entropy_decl);
 	add_referenced_var(latent_entropy_decl);
 	mark_sym_for_renaming(latent_entropy_decl);
+	assign = gimple_build_assign(temp, latent_entropy_decl);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
+}
 
+static void mix_in_sp(basic_block bb, tree local_entropy)
+{
+	gimple assign, call;
+	tree frame_addr, rhs;
+	enum tree_code subcode;
+	gimple_stmt_iterator gsi = gsi_after_labels(bb);
+
+	frame_addr = create_a_tmp_var(ptr_type_node, "local_entropy_frame_addr");
+
+	call = gimple_build_call(builtin_decl_implicit(BUILT_IN_FRAME_ADDRESS), 1, integer_zero_node);
+	gimple_call_set_lhs(call, frame_addr);
+	gsi_insert_before(&gsi, call, GSI_NEW_STMT);
+	update_stmt(call);
+
+	assign = gimple_build_assign(local_entropy, fold_convert(unsigned_intDI_type_node, frame_addr));
+	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
+
+	subcode = get_op(&rhs);
+	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rhs);
+	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
 }
 
 static unsigned int latent_entropy_execute(void)
 {
 	basic_block bb;
-	gimple assign, call;
-	gimple_stmt_iterator gsi;
-	tree local_entropy, frame_addr, rhs;
-	enum tree_code subcode;
+	tree local_entropy;
 
 	if (!latent_entropy_decl) {
 		varpool_node_ptr node;
@@ -327,26 +346,12 @@ static unsigned int latent_entropy_execute(void)
 		gcc_assert(single_succ_p(ENTRY_BLOCK_PTR_FOR_FN(cfun)));
 		bb = single_succ(ENTRY_BLOCK_PTR_FOR_FN(cfun));
 	}
-	gsi = gsi_after_labels(bb);
 
-	/* create local entropy variables */
+	/* create local entropy variable */
 	local_entropy = create_a_tmp_var(unsigned_intDI_type_node, "local_entropy");
-	frame_addr = create_a_tmp_var(ptr_type_node, "local_entropy_frame_addr");
 
 	/* 1. stack pointer */
-	call = gimple_build_call(builtin_decl_implicit(BUILT_IN_FRAME_ADDRESS), 1, integer_zero_node);
-	gimple_call_set_lhs(call, frame_addr);
-	gsi_insert_before(&gsi, call, GSI_NEW_STMT);
-	update_stmt(call);
-
-	assign = gimple_build_assign(local_entropy, fold_convert(unsigned_intDI_type_node, frame_addr));
-	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
-	update_stmt(assign);
-
-	subcode = get_op(&rhs);
-	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rhs);
-	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
-	update_stmt(assign);
+	mix_in_sp(bb, local_entropy);
 
 	bb = bb->next_bb;
 	/* 2. instrument each BB with an operation on the local entropy variable */
