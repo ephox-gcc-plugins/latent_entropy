@@ -263,6 +263,7 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 	/* create temporary copy of latent_entropy */
 	temp = create_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
 	add_referenced_var(temp);
+	mark_sym_for_renaming(temp);
 
 	gsi = gsi_last_bb(bb);
 
@@ -280,6 +281,7 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 	/* 1. read... */
 	assign = gimple_build_assign(temp, latent_entropy_decl);
 	add_referenced_var(latent_entropy_decl);
+	mark_sym_for_renaming(latent_entropy_decl);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
