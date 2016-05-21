@@ -46,7 +46,7 @@ static unsigned HOST_WIDE_INT get_random_const(void)
 	return ret;
 }
 
-static tree handle_latent_entropy_attribute(tree *node, tree name, tree args, int flags, bool *no_add_attrs)
+static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __unused, int flags __unused, bool *no_add_attrs)
 {
 	tree type;
 	unsigned long long mask;
@@ -191,7 +191,7 @@ static struct attribute_spec latent_entropy_attr = {
 #endif
 };
 
-static void register_attributes(void *event_data, void *data)
+static void register_attributes(void *event_data __unused, void *data __unused)
 {
 	register_attribute(&latent_entropy_attr);
 }
@@ -342,7 +342,7 @@ static unsigned int latent_entropy_execute(void)
 	return 0;
 }
 
-static void latent_entropy_start_unit(void *gcc_data, void *user_data)
+static void latent_entropy_start_unit(void *gcc_data __unused, void *user_data __unused)
 {
 	tree latent_entropy_type;
 
