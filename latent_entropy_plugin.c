@@ -209,6 +209,16 @@ static bool latent_entropy_gate(void)
 	return lookup_attribute("latent_entropy", DECL_ATTRIBUTES(current_function_decl)) != NULL_TREE;
 }
 
+static tree create_a_tmp_var(tree type, const char *name)
+{
+	tree var;
+
+	var = create_tmp_var(type, name);
+	add_referenced_var(var);
+	mark_sym_for_renaming(var);
+	return var;
+}
+
 static enum tree_code get_op(tree *rhs)
 {
 	static enum tree_code op;
@@ -261,9 +271,7 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 	enum tree_code subcode;
 
 	/* create temporary copy of latent_entropy */
-	temp = create_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
-	add_referenced_var(temp);
-	mark_sym_for_renaming(temp);
+	temp = create_a_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
 
 	gsi = gsi_last_bb(bb);
 
@@ -322,13 +330,8 @@ static unsigned int latent_entropy_execute(void)
 	gsi = gsi_after_labels(bb);
 
 	/* create local entropy variables */
-	local_entropy = create_tmp_var(unsigned_intDI_type_node, "local_entropy");
-	add_referenced_var(local_entropy);
-	mark_sym_for_renaming(local_entropy);
-
-	frame_addr = create_tmp_var(ptr_type_node, "local_entropy_frame_addr");
-	add_referenced_var(frame_addr);
-	mark_sym_for_renaming(frame_addr);
+	local_entropy = create_a_tmp_var(unsigned_intDI_type_node, "local_entropy");
+	frame_addr = create_a_tmp_var(ptr_type_node, "local_entropy_frame_addr");
 
 	/* 1. stack pointer */
 	call = gimple_build_call(builtin_decl_implicit(BUILT_IN_FRAME_ADDRESS), 1, integer_zero_node);
