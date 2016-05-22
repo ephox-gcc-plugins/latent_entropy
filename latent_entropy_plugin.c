@@ -29,7 +29,7 @@ static bool enabled = true;
 static GTY(()) tree latent_entropy_decl;
 
 static struct plugin_info latent_entropy_plugin_info = {
-	.version	= "201605212030",
+	.version	= "201605222100",
 	.help		= "disable\tturn off latent entropy instrumentation\n",
 };
 
