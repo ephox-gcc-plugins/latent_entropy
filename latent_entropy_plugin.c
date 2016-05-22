@@ -1,6 +1,6 @@
 /*
  * Copyright 2012-2016 by the PaX Team <pageexec@freemail.hu>
- * Copyright 2016 by the Emese Revfy <re.emese@gmail.com>
+ * Copyright 2016 by Emese Revfy <re.emese@gmail.com>
  * Licensed under the GPL v2
  *
  * Note: the choice of the license means that the compilation process is
