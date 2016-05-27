@@ -24,8 +24,6 @@
 
 int plugin_is_GPL_compatible;
 
-static bool enabled = true;
-
 static GTY(()) tree latent_entropy_decl;
 
 static struct plugin_info latent_entropy_plugin_info = {
@@ -399,6 +397,7 @@ static void latent_entropy_start_unit(void *gcc_data __unused, void *user_data _
 
 int plugin_init(struct plugin_name_args *plugin_info, struct plugin_gcc_version *version)
 {
+	bool enabled = true;
 	const char * const plugin_name = plugin_info->base_name;
 	const int argc = plugin_info->argc;
 	const struct plugin_argument * const argv = plugin_info->argv;
