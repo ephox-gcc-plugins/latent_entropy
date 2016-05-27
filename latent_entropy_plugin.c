@@ -18,6 +18,15 @@
  *
  * BUGS:
  * - none known
+ *
+ * Options:
+ * -fplugin-arg-latent_entropy_plugin-disable
+ *
+ * Attribute: __attribute__((latent_entropy))
+ *  The latent_entropy gcc attribute can be only on functions and variables.
+ *  If it is on a function then the plugin will instrument it. If the attribute
+ *  is on a variable then the plugin will initialize it with a random value.
+ *  The variable must be an integer, an integer array type or a structure with integer fields.
  */
 
 #include "gcc-common.h"
