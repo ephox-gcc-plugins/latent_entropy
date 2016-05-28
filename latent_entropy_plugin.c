@@ -284,22 +284,22 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 
 	gsi = gsi_last_bb(bb);
 
-	/* 3. ...write latent_entropy */
-	assign = gimple_build_assign(latent_entropy_decl, temp);
+	/* 1. read... */
+	add_referenced_var(latent_entropy_decl);
+	mark_sym_for_renaming(latent_entropy_decl);
+	assign = gimple_build_assign(temp, latent_entropy_decl);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
 	/* 2. ...modify... */
 	subcode = get_op(NULL);
 	assign = gimple_build_assign_with_ops(subcode, temp, temp, rhs);
-	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
+	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
-	/* 1. read... */
-	add_referenced_var(latent_entropy_decl);
-	mark_sym_for_renaming(latent_entropy_decl);
-	assign = gimple_build_assign(temp, latent_entropy_decl);
-	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
+	/* 3. ...write latent_entropy */
+	assign = gimple_build_assign(latent_entropy_decl, temp);
+	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 }
 
