@@ -13,7 +13,8 @@
  *
  * TODO:
  * - add ipa pass to identify not explicitly marked candidate functions
- * - mix in more program state (function arguments/return values, loop variables, etc)
+ * - mix in more program state (function arguments/return values,
+ *   loop variables, etc)
  * - more instrumentation control via attribute parameters
  *
  * BUGS:
@@ -26,7 +27,8 @@
  *  The latent_entropy gcc attribute can be only on functions and variables.
  *  If it is on a function then the plugin will instrument it. If the attribute
  *  is on a variable then the plugin will initialize it with a random value.
- *  The variable must be an integer, an integer array type or a structure with integer fields.
+ *  The variable must be an integer, an integer array type or a structure
+ *  with integer fields.
  */
 
 #include "gcc-common.h"
@@ -89,7 +91,8 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 		switch (TREE_CODE(type)) {
 		default:
 			*no_add_attrs = true;
-			error("variable %qD with %qE attribute must be an integer or a fixed length integer array type"
+			error("variable %qD with %qE attribute must be an integer"
+				" or a fixed length integer array type"
 				"or a fixed sized structure with integer fields", *node, name);
 			break;
 
@@ -105,7 +108,8 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 					continue;
 
 				*no_add_attrs = true;
-				error("structure variable %qD with %qE attribute has a non-integer field %qE", *node, name, field);
+				error("structure variable %qD with %qE attribute has"
+					"a non-integer field %qE", *node, name, field);
 				break;
 			}
 
@@ -126,9 +130,11 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 				mask = 2 * (mask - 1) + 1;
 
 				if (TYPE_UNSIGNED(fieldtype))
-					CONSTRUCTOR_APPEND_ELT(vals, field, build_int_cstu(fieldtype, mask & get_random_const()));
+					CONSTRUCTOR_APPEND_ELT(vals, field,
+								build_int_cstu(fieldtype, mask & get_random_const()));
 				else
-					CONSTRUCTOR_APPEND_ELT(vals, field, build_int_cst(fieldtype, mask & get_random_const()));
+					CONSTRUCTOR_APPEND_ELT(vals, field,
+								build_int_cst(fieldtype, mask & get_random_const()));
 			}
 
 			DECL_INITIAL(*node) = build_constructor(type, vals);
@@ -155,7 +161,8 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 
 			if (TREE_CODE(elt_type) != INTEGER_TYPE || !array_size || TREE_CODE(array_size) != INTEGER_CST) {
 				*no_add_attrs = true;
-				error("array variable %qD with %qE attribute must be a fixed length integer array type", *node, name);
+				error("array variable %qD with %qE attribute must be"
+					"a fixed length integer array type", *node, name);
 				break;
 			}
 
@@ -171,9 +178,11 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 
 			for (i = 0; i < nelt; i++)
 				if (TYPE_UNSIGNED(elt_type))
-					CONSTRUCTOR_APPEND_ELT(vals, size_int(i), build_int_cstu(elt_type, mask & get_random_const()));
+					CONSTRUCTOR_APPEND_ELT(vals, size_int(i),
+								build_int_cstu(elt_type, mask & get_random_const()));
 				else
-					CONSTRUCTOR_APPEND_ELT(vals, size_int(i), build_int_cst(elt_type, mask & get_random_const()));
+					CONSTRUCTOR_APPEND_ELT(vals, size_int(i),
+								build_int_cst(elt_type, mask & get_random_const()));
 
 			DECL_INITIAL(*node) = build_constructor(type, vals);
 			break;
@@ -307,6 +316,7 @@ static void perturb_latent_entropy(tree local_entropy)
 {
 	edge_iterator ei;
 	edge e, last_bb_e;
+	basic_block last_bb;
 
 	gcc_assert(single_pred_p(EXIT_BLOCK_PTR_FOR_FN(cfun)));
 	last_bb_e = single_pred_edge(EXIT_BLOCK_PTR_FOR_FN(cfun));
@@ -334,13 +344,14 @@ static void perturb_latent_entropy(tree local_entropy)
 		}
 	}
 
-	mix_local_and_global_entropy(single_pred(EXIT_BLOCK_PTR_FOR_FN(cfun)), local_entropy);
+	last_bb = single_pred(EXIT_BLOCK_PTR_FOR_FN(cfun));
+	mix_local_and_global_entropy(last_bb, local_entropy);
 }
 
 static void mix_stack_pointer(basic_block bb, tree local_entropy)
 {
 	gimple assign, call;
-	tree frame_addr, rand_const, temp;
+	tree frame_addr, rand_const, temp, fndecl, udi_frame_addr;
 	enum tree_code subcode;
 	gimple_stmt_iterator gsi = gsi_after_labels(bb);
 
@@ -348,12 +359,14 @@ static void mix_stack_pointer(basic_block bb, tree local_entropy)
 	frame_addr = create_a_tmp_var(ptr_type_node, "local_entropy_frame_addr");
 
 	/* 2. __builtin_frame_address() */
-	call = gimple_build_call(builtin_decl_implicit(BUILT_IN_FRAME_ADDRESS), 1, integer_zero_node);
+	fndecl = builtin_decl_implicit(BUILT_IN_FRAME_ADDRESS);
+	call = gimple_build_call(fndecl, 1, integer_zero_node);
 	gimple_call_set_lhs(call, frame_addr);
 	gsi_insert_before(&gsi, call, GSI_NEW_STMT);
 	update_stmt(call);
 
-	assign = gimple_build_assign(local_entropy, fold_convert(unsigned_intDI_type_node, frame_addr));
+	udi_frame_addr = fold_convert(unsigned_intDI_type_node, frame_addr);
+	assign = gimple_build_assign(local_entropy, udi_frame_addr);
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
