@@ -272,7 +272,7 @@ static void perturb_local_entropy(basic_block bb, tree local_entropy)
 	update_stmt(assign);
 }
 
-static void perturb_latent_entropy(basic_block bb, tree rhs)
+static void mix_local_and_global_entropy(basic_block bb, tree rhs)
 {
 	gimple_stmt_iterator gsi;
 	gimple assign;
@@ -301,6 +301,40 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 	assign = gimple_build_assign(latent_entropy_decl, temp);
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
+}
+
+static void perturb_latent_entropy(tree local_entropy)
+{
+	edge_iterator ei;
+	edge e, last_bb_e;
+
+	gcc_assert(single_pred_p(EXIT_BLOCK_PTR_FOR_FN(cfun)));
+	last_bb_e = single_pred_edge(EXIT_BLOCK_PTR_FOR_FN(cfun));
+
+	FOR_EACH_EDGE(e, ei, last_bb_e->src->preds) {
+		gimple_stmt_iterator gsi;
+
+		if (ENTRY_BLOCK_PTR_FOR_FN(cfun) == e->src)
+			continue;
+		if (EXIT_BLOCK_PTR_FOR_FN(cfun) == e->src)
+			continue;
+
+		for (gsi = gsi_start_bb(e->src); !gsi_end_p(gsi); gsi_next(&gsi)) {
+			gcall *call;
+			gimple stmt = gsi_stmt(gsi);
+
+			if (!is_gimple_call(stmt))
+				continue;
+
+			call = as_a_gcall(stmt);
+			if (!gimple_call_tail_p(call))
+				continue;
+			mix_local_and_global_entropy(gimple_bb(call), local_entropy);
+			break;
+		}
+	}
+
+	mix_local_and_global_entropy(single_pred(EXIT_BLOCK_PTR_FOR_FN(cfun)), local_entropy);
 }
 
 static void mix_stack_pointer(basic_block bb, tree local_entropy)
@@ -397,8 +431,7 @@ static unsigned int latent_entropy_execute(void)
 	};
 
 	/* 4. mix local entropy into the global entropy variable */
-	gcc_assert(single_pred_p(EXIT_BLOCK_PTR_FOR_FN(cfun)));
-	perturb_latent_entropy(single_pred(EXIT_BLOCK_PTR_FOR_FN(cfun)), local_entropy);
+	perturb_latent_entropy(local_entropy);
 	return 0;
 }
 

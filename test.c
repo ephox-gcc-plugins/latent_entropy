@@ -18,6 +18,10 @@ void __latent_entropy test2(int argc, char *argv[])
 	a = argc * argc;
 	if (argc == 10)
 		printf("%u %s\n", a, *argv);
+	else if (argc == 8)
+		return;
+	else
+		printf("AAAAAAAA %u %s\n", a, *argv);
 }
 
 int main(int argc, char *argv[])
