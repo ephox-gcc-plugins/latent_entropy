@@ -345,27 +345,35 @@ static void mix_stack_pointer(basic_block bb, tree local_entropy)
 	update_stmt(assign);
 }
 
+static bool create_latent_entropy_decl(void)
+{
+	varpool_node_ptr node;
+
+	if (latent_entropy_decl != NULL_TREE)
+		return true;
+
+	FOR_EACH_VARIABLE(node) {
+		tree var = NODE_DECL(node);
+
+		if (DECL_NAME_LENGTH(var) < sizeof("latent_entropy") - 1)
+			continue;
+		if (strcmp(IDENTIFIER_POINTER(DECL_NAME(var)), "latent_entropy"))
+			continue;
+
+		latent_entropy_decl = var;
+		break;
+	}
+
+	return latent_entropy_decl != NULL_TREE;
+}
+
 static unsigned int latent_entropy_execute(void)
 {
 	basic_block bb;
 	tree local_entropy;
 
-	if (!latent_entropy_decl) {
-		varpool_node_ptr node;
-
-		FOR_EACH_VARIABLE(node) {
-			tree var = NODE_DECL(node);
-
-			if (DECL_NAME_LENGTH(var) < sizeof("latent_entropy") - 1)
-				continue;
-			if (strcmp(IDENTIFIER_POINTER(DECL_NAME(var)), "latent_entropy"))
-				continue;
-			latent_entropy_decl = var;
-			break;
-		}
-		if (!latent_entropy_decl)
-			return 0;
-	}
+	if (!create_latent_entropy_decl())
+		return 0;
 
 	gcc_assert(single_succ_p(ENTRY_BLOCK_PTR_FOR_FN(cfun)));
 	bb = single_succ(ENTRY_BLOCK_PTR_FOR_FN(cfun));
