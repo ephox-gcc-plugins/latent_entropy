@@ -279,38 +279,41 @@ static void perturb_latent_entropy(basic_block bb, tree rhs)
 	tree temp;
 	enum tree_code subcode;
 
-	/* create temporary copy of latent_entropy */
+	/* 1. create temporary copy of latent_entropy */
 	temp = create_a_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
 
+	/* 2. read... */
 	gsi = gsi_last_bb(bb);
 
-	/* 1. read... */
 	add_referenced_var(latent_entropy_decl);
 	mark_sym_for_renaming(latent_entropy_decl);
 	assign = gimple_build_assign(temp, latent_entropy_decl);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
-	/* 2. ...modify... */
+	/* 3. ...modify... */
 	subcode = get_op(NULL);
 	assign = gimple_build_assign_with_ops(subcode, temp, temp, rhs);
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
-	/* 3. ...write latent_entropy */
+	/* 4. ...write latent_entropy */
 	assign = gimple_build_assign(latent_entropy_decl, temp);
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 }
 
-static void mix_in_sp(basic_block bb, tree local_entropy)
+static void mix_stack_pointer(basic_block bb, tree local_entropy)
 {
 	gimple assign, call;
-	tree frame_addr, rand_const;
+	tree frame_addr, rand_const, temp;
+	enum tree_code subcode;
 	gimple_stmt_iterator gsi = gsi_after_labels(bb);
 
+	/* 1. create local_entropy_frame_addr */
 	frame_addr = create_a_tmp_var(ptr_type_node, "local_entropy_frame_addr");
 
+	/* 2. __builtin_frame_address() */
 	call = gimple_build_call(builtin_decl_implicit(BUILT_IN_FRAME_ADDRESS), 1, integer_zero_node);
 	gimple_call_set_lhs(call, frame_addr);
 	gsi_insert_before(&gsi, call, GSI_NEW_STMT);
@@ -320,8 +323,24 @@ static void mix_in_sp(basic_block bb, tree local_entropy)
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
+	/* 3. create temporary copy of latent_entropy */
+	temp = create_a_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
+
+	/* 4. read the global entropy variable into local entropy */
+	add_referenced_var(latent_entropy_decl);
+	mark_sym_for_renaming(latent_entropy_decl);
+	assign = gimple_build_assign(temp, latent_entropy_decl);
+	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
+
+	/* 5. mix local_entropy_frame_addr into local entropy */
+	assign = gimple_build_assign_with_ops(BIT_XOR_EXPR, local_entropy, local_entropy, temp);
+	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	update_stmt(assign);
+
 	rand_const = build_int_cstu(unsigned_intDI_type_node, get_random_const());
-	assign = gimple_build_assign_with_ops(BIT_XOR_EXPR, local_entropy, local_entropy, rand_const);
+	subcode = get_op(NULL);
+	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rand_const);
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 }
@@ -356,20 +375,20 @@ static unsigned int latent_entropy_execute(void)
 		bb = single_succ(ENTRY_BLOCK_PTR_FOR_FN(cfun));
 	}
 
-	/* create local entropy variable */
+	/* 1. create local entropy variable */
 	local_entropy = create_a_tmp_var(unsigned_intDI_type_node, "local_entropy");
 
-	/* 1. stack pointer */
-	mix_in_sp(bb, local_entropy);
+	/* 2. mix the global entropy variable into stack pointer */
+	mix_stack_pointer(bb, local_entropy);
 
 	bb = bb->next_bb;
-	/* 2. instrument each BB with an operation on the local entropy variable */
+	/* 3. instrument each BB with an operation on the local entropy variable */
 	while (bb != EXIT_BLOCK_PTR_FOR_FN(cfun)) {
 		perturb_local_entropy(bb, local_entropy);
 		bb = bb->next_bb;
 	};
 
-	/* 3. mix local entropy into the global entropy variable */
+	/* 4. mix local entropy into the global entropy variable */
 	gcc_assert(single_pred_p(EXIT_BLOCK_PTR_FOR_FN(cfun)));
 	perturb_latent_entropy(single_pred(EXIT_BLOCK_PTR_FOR_FN(cfun)), local_entropy);
 	return 0;
