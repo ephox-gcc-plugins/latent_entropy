@@ -8,8 +8,51 @@
  *       but for the kernel it doesn't matter since it doesn't link against
  *       any of the gcc libraries
  *
- * gcc plugin to help generate a little bit of entropy from program state,
- * used throughout the uptime of the kernel
+ * This gcc plugin helps generate a little bit of entropy from program state,
+ * used throughout the uptime of the kernel. Here is an instrumentation example:
+ *
+ * before:
+ * void __latent_entropy test(int argc, char *argv[])
+ * {
+ *	printf("%u %s\n", argc, *argv);
+ * }
+ *
+ * after:
+ * void __latent_entropy test(int argc, char *argv[])
+ * {
+ *	// latent_entropy_execute() 1.
+ *	unsigned long local_entropy;
+ *	// mix_stack_pointer() 1.
+ *	void *local_entropy_frame_addr;
+ *	// mix_stack_pointer() 3.
+ *	unsigned long temp_latent_entropy;
+ *
+ *	// mix_stack_pointer() 2.
+ *	local_entropy_frame_addr = __builtin_frame_address(0);
+ *	local_entropy = (unsigned long) local_entropy_frame_addr;
+ *
+ *	// mix_stack_pointer() 4.
+ *	temp_latent_entropy = latent_entropy;
+ *	// mix_stack_pointer() 5.
+ *	local_entropy ^= temp_latent_entropy;
+ *
+ *	// latent_entropy_execute() 3.
+ *	local_entropy += 4623067384293424948;
+ *
+ *	printf("%u %s\n", argc, *argv);
+ *
+ *	// latent_entropy_execute() 4.
+ *	temp_latent_entropy = rol(temp_latent_entropy, local_entropy);
+ *	latent_entropy = temp_latent_entropy;
+ * }
+ *
+ * It would look like this in the kernel:
+ *
+ * unsigned long local_entropy = latent_entropy;
+ * local_entropy ^= get_random_long();
+ * local_entropy ^= (unsigned long)__builtin_frame_address(0);
+ * local_entropy += get_random_long();
+ * latent_entropy = rol(local_entropy, get_random_long());
  *
  * TODO:
  * - add ipa pass to identify not explicitly marked candidate functions
