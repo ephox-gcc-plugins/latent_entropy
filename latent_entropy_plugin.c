@@ -105,10 +105,21 @@ static unsigned HOST_WIDE_INT get_random_const(void)
 	return ret;
 }
 
+static tree tree_get_random_const(tree type)
+{
+	unsigned long long mask;
+
+	mask = 1ULL << (TREE_INT_CST_LOW(TYPE_SIZE(type)) - 1);
+	mask = 2 * (mask - 1) + 1;
+
+	if (TYPE_UNSIGNED(type))
+		return build_int_cstu(type, mask & get_random_const());
+	return build_int_cst(type, mask & get_random_const());
+}
+
 static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __unused, int flags __unused, bool *no_add_attrs)
 {
 	tree type;
-	unsigned long long mask;
 #if BUILDING_GCC_VERSION <= 4007
 	VEC(constructor_elt, gc) *vals;
 #else
@@ -170,32 +181,20 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 #endif
 
 			for (field = TYPE_FIELDS(type); field; field = TREE_CHAIN(field)) {
-				tree fieldtype;
+				tree random_const;
 
-				fieldtype = TREE_TYPE(field);
-				mask = 1ULL << (TREE_INT_CST_LOW(TYPE_SIZE(fieldtype)) - 1);
-				mask = 2 * (mask - 1) + 1;
-
-				if (TYPE_UNSIGNED(fieldtype))
-					CONSTRUCTOR_APPEND_ELT(vals, field,
-								build_int_cstu(fieldtype, mask & get_random_const()));
-				else
-					CONSTRUCTOR_APPEND_ELT(vals, field,
-								build_int_cst(fieldtype, mask & get_random_const()));
+				random_const = tree_get_random_const(TREE_TYPE(field));
+				CONSTRUCTOR_APPEND_ELT(vals, field, random_const);
 			}
 
+			/* Initialize the fields with random constants */
 			DECL_INITIAL(*node) = build_constructor(type, vals);
 			break;
 		}
 
+		/* Initialize the variable with a random constant */
 		case INTEGER_TYPE:
-			mask = 1ULL << (TREE_INT_CST_LOW(TYPE_SIZE(type)) - 1);
-			mask = 2 * (mask - 1) + 1;
-
-			if (TYPE_UNSIGNED(type))
-				DECL_INITIAL(*node) = build_int_cstu(type, mask & get_random_const());
-			else
-				DECL_INITIAL(*node) = build_int_cst(type, mask & get_random_const());
+			DECL_INITIAL(*node) = tree_get_random_const(type);
 			break;
 
 		case ARRAY_TYPE: {
@@ -220,17 +219,13 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 			vec_alloc(vals, nelt);
 #endif
 
-			mask = 1ULL << (TREE_INT_CST_LOW(TYPE_SIZE(elt_type)) - 1);
-			mask = 2 * (mask - 1) + 1;
+			for (i = 0; i < nelt; i++) {
+				tree random_const = tree_get_random_const(elt_type);
 
-			for (i = 0; i < nelt; i++)
-				if (TYPE_UNSIGNED(elt_type))
-					CONSTRUCTOR_APPEND_ELT(vals, size_int(i),
-								build_int_cstu(elt_type, mask & get_random_const()));
-				else
-					CONSTRUCTOR_APPEND_ELT(vals, size_int(i),
-								build_int_cst(elt_type, mask & get_random_const()));
+				CONSTRUCTOR_APPEND_ELT(vals, size_int(i), random_const);
+			}
 
+			/* Initialize the elements of the array with random constants */
 			DECL_INITIAL(*node) = build_constructor(type, vals);
 			break;
 		}
