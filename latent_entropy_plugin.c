@@ -280,6 +280,18 @@ static tree create_a_tmp_var(tree type, const char *name)
 	return var;
 }
 
+/*
+ * Set up the next operation and its constant operand to use in the latent
+ * entropy PRNG. When RHS is specified, the request is for perturbing the
+ * local latent entropy variable, otherwise it is for perturbing the global
+ * latent entropy variable where the two operands are already given by the
+ * local and global latent entropy variables themselves.
+ *
+ * The operation is one of add/xor/rol when instrumenting the local entropy
+ * variable and one of add/xor when perturbing the global entropy variable.
+ * Rotation is not used for the latter case because it would transmit less
+ * entropy to the global variable than the other two operations.
+ */
 static enum tree_code get_op(tree *rhs)
 {
 	static enum tree_code op;
