@@ -295,6 +295,9 @@ static enum tree_code get_op(tree *rhs)
 	case PLUS_EXPR:
 		if (rhs) {
 			op = LROTATE_EXPR;
+			/* This code limits the value of random_const to
+			 * the size of a wide int for the rotation
+			 */
 			random_const &= HOST_BITS_PER_WIDE_INT - 1;
 			break;
 		}
