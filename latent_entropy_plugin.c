@@ -86,6 +86,10 @@ static struct plugin_info latent_entropy_plugin_info = {
 };
 
 static unsigned HOST_WIDE_INT seed;
+/* get_random_seed() (this is a GCC function) generates the seed.
+ * This is a simple random generator without any cryptographic security because
+ * the entropy doesn't come from here.
+ */
 static unsigned HOST_WIDE_INT get_random_const(void)
 {
 	unsigned int i;
