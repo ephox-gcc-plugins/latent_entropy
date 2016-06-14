@@ -22,18 +22,18 @@
  * {
  *	// latent_entropy_execute() 1.
  *	unsigned long local_entropy;
- *	// mix_stack_pointer() 1.
+ *	// init_local_entropy() 1.
  *	void *local_entropy_frame_addr;
- *	// mix_stack_pointer() 3.
+ *	// init_local_entropy() 3.
  *	unsigned long temp_latent_entropy;
  *
- *	// mix_stack_pointer() 2.
+ *	// init_local_entropy() 2.
  *	local_entropy_frame_addr = __builtin_frame_address(0);
  *	local_entropy = (unsigned long) local_entropy_frame_addr;
  *
- *	// mix_stack_pointer() 4.
+ *	// init_local_entropy() 4.
  *	temp_latent_entropy = latent_entropy;
- *	// mix_stack_pointer() 5.
+ *	// init_local_entropy() 5.
  *	local_entropy ^= temp_latent_entropy;
  *
  *	// latent_entropy_execute() 3.
@@ -46,13 +46,13 @@
  *	latent_entropy = temp_latent_entropy;
  * }
  *
- * It would look like this in the kernel:
+ * It would look like this in C:
  *
  * unsigned long local_entropy = latent_entropy;
- * local_entropy ^= get_random_long();
+ * local_entropy ^= 1234567890;
  * local_entropy ^= (unsigned long)__builtin_frame_address(0);
- * local_entropy += get_random_long();
- * latent_entropy = rol(local_entropy, get_random_long());
+ * local_entropy += 9876543210;
+ * latent_entropy = rol(local_entropy, 1234509876);
  *
  * TODO:
  * - add ipa pass to identify not explicitly marked candidate functions
@@ -152,7 +152,7 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 			*no_add_attrs = true;
 			error("variable %qD with %qE attribute must be an integer"
 				" or a fixed length integer array type"
-				"or a fixed sized structure with integer fields", *node, name);
+				" or a fixed sized structure with integer fields", *node, name);
 			break;
 
 		case RECORD_TYPE: {
@@ -168,7 +168,7 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 
 				*no_add_attrs = true;
 				error("structure variable %qD with %qE attribute has"
-					"a non-integer field %qE", *node, name, field);
+					" a non-integer field %qE", *node, name, field);
 				break;
 			}
 
@@ -209,7 +209,7 @@ static tree handle_latent_entropy_attribute(tree *node, tree name, tree args __u
 			if (TREE_CODE(elt_type) != INTEGER_TYPE || !array_size || TREE_CODE(array_size) != INTEGER_CST) {
 				*no_add_attrs = true;
 				error("array variable %qD with %qE attribute must be"
-					"a fixed length integer array type", *node, name);
+					" a fixed length integer array type", *node, name);
 				break;
 			}
 
@@ -331,10 +331,10 @@ static void perturb_local_entropy(basic_block bb, tree local_entropy)
 	gimple_stmt_iterator gsi;
 	gimple assign;
 	tree rhs;
-	enum tree_code subcode;
+	enum tree_code op;
 
-	subcode = get_op(&rhs);
-	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rhs);
+	op = get_op(&rhs);
+	assign = gimple_build_assign_with_ops(op, local_entropy, local_entropy, rhs);
 	gsi = gsi_after_labels(bb);
 	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
@@ -344,7 +344,7 @@ static void __perturb_latent_entropy(gimple_stmt_iterator *gsi, tree local_entro
 {
 	gimple assign;
 	tree temp;
-	enum tree_code subcode;
+	enum tree_code op;
 
 	/* 1. create temporary copy of latent_entropy */
 	temp = create_a_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
@@ -357,8 +357,8 @@ static void __perturb_latent_entropy(gimple_stmt_iterator *gsi, tree local_entro
 	update_stmt(assign);
 
 	/* 3. ...modify... */
-	subcode = get_op(NULL);
-	assign = gimple_build_assign_with_ops(subcode, temp, temp, local_entropy);
+	op = get_op(NULL);
+	assign = gimple_build_assign_with_ops(op, temp, temp, local_entropy);
 	gsi_insert_after(gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
@@ -382,6 +382,7 @@ static bool handle_tail_calls(basic_block bb, tree local_entropy)
 		call = as_a_gcall(stmt);
 		if (!gimple_call_tail_p(call))
 			continue;
+
 		__perturb_latent_entropy(&gsi, local_entropy);
 		return true;
 	}
@@ -415,17 +416,17 @@ static void perturb_latent_entropy(tree local_entropy)
 	}
 }
 
-static void mix_stack_pointer(basic_block bb, tree local_entropy)
+static void init_local_entropy(basic_block bb, tree local_entropy)
 {
 	gimple assign, call;
 	tree frame_addr, rand_const, temp, fndecl, udi_frame_addr;
-	enum tree_code subcode;
+	enum tree_code op;
 	gimple_stmt_iterator gsi = gsi_after_labels(bb);
 
 	/* 1. create local_entropy_frame_addr */
 	frame_addr = create_a_tmp_var(ptr_type_node, "local_entropy_frame_addr");
 
-	/* 2. __builtin_frame_address() */
+	/* 2. local_entropy_frame_addr = __builtin_frame_address() */
 	fndecl = builtin_decl_implicit(BUILT_IN_FRAME_ADDRESS);
 	call = gimple_build_call(fndecl, 1, integer_zero_node);
 	gimple_call_set_lhs(call, frame_addr);
@@ -453,8 +454,8 @@ static void mix_stack_pointer(basic_block bb, tree local_entropy)
 	update_stmt(assign);
 
 	rand_const = build_int_cstu(unsigned_intDI_type_node, get_random_const());
-	subcode = get_op(NULL);
-	assign = gimple_build_assign_with_ops(subcode, local_entropy, local_entropy, rand_const);
+	op = get_op(NULL);
+	assign = gimple_build_assign_with_ops(op, local_entropy, local_entropy, rand_const);
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 }
@@ -489,6 +490,7 @@ static unsigned int latent_entropy_execute(void)
 	if (!create_latent_entropy_decl())
 		return 0;
 
+	/* 2. initialize local entropy variable */
 	gcc_assert(single_succ_p(ENTRY_BLOCK_PTR_FOR_FN(cfun)));
 	bb = single_succ(ENTRY_BLOCK_PTR_FOR_FN(cfun));
 	if (!single_pred_p(bb)) {
@@ -497,13 +499,14 @@ static unsigned int latent_entropy_execute(void)
 		bb = single_succ(ENTRY_BLOCK_PTR_FOR_FN(cfun));
 	}
 
-	/* 1. create local entropy variable */
+	/* 1. create the local entropy variable */
 	local_entropy = create_a_tmp_var(unsigned_intDI_type_node, "local_entropy");
 
-	/* 2. mix the global entropy variable into stack pointer */
-	mix_stack_pointer(bb, local_entropy);
+	/* 2. initialize the local entropy variable */
+	init_local_entropy(bb, local_entropy);
 
 	bb = bb->next_bb;
+
 	/* 3. instrument each BB with an operation on the local entropy variable */
 	while (bb != EXIT_BLOCK_PTR_FOR_FN(cfun)) {
 		perturb_local_entropy(bb, local_entropy);
