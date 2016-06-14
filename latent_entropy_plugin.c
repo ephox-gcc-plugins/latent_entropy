@@ -86,7 +86,8 @@ static struct plugin_info latent_entropy_plugin_info = {
 };
 
 static unsigned HOST_WIDE_INT seed;
-/* get_random_seed() (this is a GCC function) generates the seed.
+/*
+ * get_random_seed() (this is a GCC function) generates the seed.
  * This is a simple random generator without any cryptographic security because
  * the entropy doesn't come from here.
  */
@@ -307,7 +308,8 @@ static enum tree_code get_op(tree *rhs)
 	case PLUS_EXPR:
 		if (rhs) {
 			op = LROTATE_EXPR;
-			/* This code limits the value of random_const to
+			/*
+			 * This code limits the value of random_const to
 			 * the size of a wide int for the rotation
 			 */
 			random_const &= HOST_BITS_PER_WIDE_INT - 1;
@@ -338,7 +340,7 @@ static void perturb_local_entropy(basic_block bb, tree local_entropy)
 	update_stmt(assign);
 }
 
-static void mix_local_and_global_entropy(basic_block bb, tree rhs)
+static void __perturb_latent_entropy(basic_block bb, tree local_entropy)
 {
 	gimple_stmt_iterator gsi;
 	gimple assign;
@@ -359,7 +361,7 @@ static void mix_local_and_global_entropy(basic_block bb, tree rhs)
 
 	/* 3. ...modify... */
 	subcode = get_op(NULL);
-	assign = gimple_build_assign_with_ops(subcode, temp, temp, rhs);
+	assign = gimple_build_assign_with_ops(subcode, temp, temp, local_entropy);
 	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
@@ -396,13 +398,13 @@ static void perturb_latent_entropy(tree local_entropy)
 			call = as_a_gcall(stmt);
 			if (!gimple_call_tail_p(call))
 				continue;
-			mix_local_and_global_entropy(gimple_bb(call), local_entropy);
+			__perturb_latent_entropy(gimple_bb(call), local_entropy);
 			break;
 		}
 	}
 
 	last_bb = single_pred(EXIT_BLOCK_PTR_FOR_FN(cfun));
-	mix_local_and_global_entropy(last_bb, local_entropy);
+	__perturb_latent_entropy(last_bb, local_entropy);
 }
 
 static void mix_stack_pointer(basic_block bb, tree local_entropy)
