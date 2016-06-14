@@ -340,9 +340,8 @@ static void perturb_local_entropy(basic_block bb, tree local_entropy)
 	update_stmt(assign);
 }
 
-static void __perturb_latent_entropy(basic_block bb, tree local_entropy)
+static void __perturb_latent_entropy(gimple_stmt_iterator *gsi, tree local_entropy)
 {
-	gimple_stmt_iterator gsi;
 	gimple assign;
 	tree temp;
 	enum tree_code subcode;
@@ -351,24 +350,43 @@ static void __perturb_latent_entropy(basic_block bb, tree local_entropy)
 	temp = create_a_tmp_var(unsigned_intDI_type_node, "temp_latent_entropy");
 
 	/* 2. read... */
-	gsi = gsi_last_bb(bb);
-
 	add_referenced_var(latent_entropy_decl);
 	mark_sym_for_renaming(latent_entropy_decl);
 	assign = gimple_build_assign(temp, latent_entropy_decl);
-	gsi_insert_before(&gsi, assign, GSI_NEW_STMT);
+	gsi_insert_before(gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
 	/* 3. ...modify... */
 	subcode = get_op(NULL);
 	assign = gimple_build_assign_with_ops(subcode, temp, temp, local_entropy);
-	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	gsi_insert_after(gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
 
 	/* 4. ...write latent_entropy */
 	assign = gimple_build_assign(latent_entropy_decl, temp);
-	gsi_insert_after(&gsi, assign, GSI_NEW_STMT);
+	gsi_insert_after(gsi, assign, GSI_NEW_STMT);
 	update_stmt(assign);
+}
+
+static bool handle_tail_calls(basic_block bb, tree local_entropy)
+{
+	gimple_stmt_iterator gsi;
+
+	for (gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi)) {
+		gcall *call;
+		gimple stmt = gsi_stmt(gsi);
+
+		if (!is_gimple_call(stmt))
+			continue;
+
+		call = as_a_gcall(stmt);
+		if (!gimple_call_tail_p(call))
+			continue;
+		__perturb_latent_entropy(&gsi, local_entropy);
+		return true;
+	}
+
+	return false;
 }
 
 static void perturb_latent_entropy(tree local_entropy)
@@ -381,30 +399,20 @@ static void perturb_latent_entropy(tree local_entropy)
 	last_bb_e = single_pred_edge(EXIT_BLOCK_PTR_FOR_FN(cfun));
 
 	FOR_EACH_EDGE(e, ei, last_bb_e->src->preds) {
-		gimple_stmt_iterator gsi;
-
 		if (ENTRY_BLOCK_PTR_FOR_FN(cfun) == e->src)
 			continue;
 		if (EXIT_BLOCK_PTR_FOR_FN(cfun) == e->src)
 			continue;
 
-		for (gsi = gsi_start_bb(e->src); !gsi_end_p(gsi); gsi_next(&gsi)) {
-			gcall *call;
-			gimple stmt = gsi_stmt(gsi);
-
-			if (!is_gimple_call(stmt))
-				continue;
-
-			call = as_a_gcall(stmt);
-			if (!gimple_call_tail_p(call))
-				continue;
-			__perturb_latent_entropy(gimple_bb(call), local_entropy);
-			break;
-		}
+		handle_tail_calls(e->src, local_entropy);
 	}
 
 	last_bb = single_pred(EXIT_BLOCK_PTR_FOR_FN(cfun));
-	__perturb_latent_entropy(last_bb, local_entropy);
+	if (!handle_tail_calls(last_bb, local_entropy)) {
+		gimple_stmt_iterator gsi = gsi_last_bb(last_bb);
+
+		__perturb_latent_entropy(&gsi, local_entropy);
+	}
 }
 
 static void mix_stack_pointer(basic_block bb, tree local_entropy)
