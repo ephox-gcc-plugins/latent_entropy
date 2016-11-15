@@ -4,7 +4,7 @@
 
 #define __latent_entropy __attribute__((latent_entropy))
 
-volatile unsigned long long latent_entropy __latent_entropy;
+volatile unsigned long latent_entropy __latent_entropy;
 
 void __latent_entropy test1(int argc, char *argv[])
 {
