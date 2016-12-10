@@ -81,7 +81,7 @@ __visible int plugin_is_GPL_compatible;
 static GTY(()) tree latent_entropy_decl;
 
 static struct plugin_info latent_entropy_plugin_info = {
-	.version	= "201610182310",
+	.version	= "20161210",
 	.help		= "disable\tturn off latent entropy instrumentation\n",
 };
 
@@ -311,9 +311,9 @@ static enum tree_code get_op(tree *rhs)
 			op = LROTATE_EXPR;
 			/*
 			 * This code limits the value of random_const to
-			 * the size of a wide int for the rotation
+			 * the size of a long for the rotation
 			 */
-			random_const &= HOST_BITS_PER_WIDE_INT - 1;
+			random_const %= TYPE_PRECISION(long_unsigned_type_node);
 			break;
 		}
 
